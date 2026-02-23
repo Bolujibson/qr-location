@@ -27,7 +27,10 @@
   <p id="message"></p>
 
   <script>
-
+const targetLat = 8.4966;   // replace with your real location
+const targetLng = 4.5421;   // replace with your real location
+const allowedRadius = 50;   // metres
+    
     // Get device location automatically
     navigator.geolocation.getCurrentPosition(
       function(position) {
