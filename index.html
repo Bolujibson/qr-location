@@ -1,21 +1,23 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Location Check-in</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 24px; }
     .wrap { max-width: 520px; margin: 0 auto; }
-    h2 { text-align: centre; }
+    h2 { text-align: center; }
     .card { border: 1px solid #ddd; border-radius: 10px; padding: 16px; margin-top: 14px; }
-    label { font-weight: 600; }
+    label { font-weight: 600; display:block; margin-top: 8px; }
     input { width: 100%; padding: 10px; margin: 6px 0 12px; box-sizing: border-box; }
     button { padding: 10px 14px; cursor: pointer; }
-    .muted { colour: #555; }
-    .ok { colour: green; font-weight: 700; }
-    .bad { colour: #b00020; font-weight: 700; }
+    .muted { color: #555; }
+    .ok { color: #0a7a0a; font-weight: 700; }
+    .bad { color: #b00020; font-weight: 700; }
     .row { margin-top: 8px; }
     a { word-break: break-all; }
+    code { background:#f6f6f6; padding:2px 6px; border-radius:6px; }
   </style>
 </head>
 
@@ -27,8 +29,9 @@
       <label>Email:</label>
       <input type="email" id="email" placeholder="name@example.com" required>
 
-      <label>Location ID:</label>
-      <input type="text" id="loc_id" placeholder="e.g., siteA" required>
+      <div class="muted">
+        Location ID (from QR): <code id="locShow"></code>
+      </div>
     </div>
 
     <div class="card">
@@ -36,7 +39,7 @@
       <div class="row">
         <button id="btnLocate" type="button">Get my location</button>
       </div>
-      <div class="row" id="locMsg" class="muted"></div>
+      <div class="row" id="locMsg"></div>
     </div>
 
     <div class="card">
@@ -50,13 +53,23 @@
   </div>
 
   <script>
-    // ====== APPROVED (TARGET) LOCATION ======
-    const targetLat = 8.457831;
-    const targetLng = 4.570773;
-    const allowedRadius = 80; // metres
-
-    // ====== YOUR APPS SCRIPT WEB APP URL (/exec) ======
+    // ====== 1) APPS SCRIPT WEB APP URL (/exec) ======
     const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbx8bWi-o4xO5Zgayvcp7iRx-h7UeFoLFgCKrm9ZWnt2FXfOCjz_78WGWU3_ePCR_2LD/exec";
+
+    // ====== 2) APPROVED LOCATIONS LIST (add more as needed) ======
+    // QR should be like: https://bolujibson.github.io/qr-location/?loc=siteA
+    const LOCATIONS = {
+      siteA: { lat: 8.457831, lng: 4.570773, radius_m: 80 }
+      // siteB: { lat: 8.123456, lng: 4.654321, radius_m: 50 }
+    };
+
+    // ====== 3) GET LOCATION ID FROM URL ======
+    const params = new URLSearchParams(window.location.search);
+    const loc_id = (params.get("loc") || "siteA").trim();
+
+    document.getElementById("locShow").textContent = loc_id;
+
+    const target = LOCATIONS[loc_id];
 
     // ====== STATE ======
     let deviceLat = null;
@@ -79,18 +92,28 @@
       return R * c;
     }
 
-    function mapLink(lat, lng) {
+    function googleMapLink(lat, lng) {
       return "https://www.google.com/maps?q=" + encodeURIComponent(lat + "," + lng);
     }
 
-    function setText(id, text, cssClass) {
+    function setText(id, html, cssClass) {
       const el = document.getElementById(id);
       el.className = cssClass || "";
-      el.innerHTML = text;
+      el.innerHTML = html;
     }
 
     // ====== STEP 1: GET LOCATION ======
     document.getElementById("btnLocate").addEventListener("click", function () {
+      document.getElementById("btnSubmit").disabled = true;
+
+      if (!target) {
+        setText("locMsg",
+          `Unknown Location ID: <b>${loc_id}</b><br>Please fix LOCATIONS in the code or use a valid QR link.`,
+          "bad"
+        );
+        return;
+      }
+
       setText("locMsg", "Getting your location…", "muted");
 
       if (!navigator.geolocation) {
@@ -103,29 +126,38 @@
           deviceLat = pos.coords.latitude;
           deviceLng = pos.coords.longitude;
 
-          distanceM = distanceInMeters(deviceLat, deviceLng, targetLat, targetLng);
+          distanceM = distanceInMeters(deviceLat, deviceLng, target.lat, target.lng);
           const rounded = Math.round(distanceM);
 
-          const within = distanceM <= allowedRadius;
+          const within = distanceM <= target.radius_m;
           status = within ? "APPROVED" : "REJECTED";
 
-          const msg = within
-            ? `You are within the allowed area. (allowed ${allowedRadius} m)`
-            : `You are outside the allowed area. Move closer (allowed ${allowedRadius} m).`;
+          setText(
+            "locMsg",
+            within
+              ? `You are within the allowed area. (allowed <b>${target.radius_m} m</b>)`
+              : `You are outside the allowed area. Move closer (allowed <b>${target.radius_m} m</b>).`,
+            within ? "ok" : "bad"
+          );
 
-          setText("locMsg", msg, within ? "ok" : "bad");
-
+          // Show both device + approved coordinates to avoid confusion
           const infoHtml =
-            `Location ID: <b>${document.getElementById("loc_id").value || "(enter location ID)"}</b><br>` +
+            `Location ID: <b>${loc_id}</b><br>` +
+            `Device: <b>${deviceLat.toFixed(6)}, ${deviceLng.toFixed(6)}</b> (<a href="${googleMapLink(deviceLat, deviceLng)}" target="_blank" rel="noopener">map</a>)<br>` +
+            `Approved: <b>${target.lat.toFixed(6)}, ${target.lng.toFixed(6)}</b> (<a href="${googleMapLink(target.lat, target.lng)}" target="_blank" rel="noopener">map</a>)<br>` +
             `Distance: <b>${rounded} m</b><br>` +
-            `Map: <a href="${mapLink(deviceLat, deviceLng)}" target="_blank" rel="noopener">Open map</a>`;
+            `Status: <b>${status}</b>`;
 
           setText("info", infoHtml, "muted");
 
           document.getElementById("btnSubmit").disabled = !within;
         },
-        function () {
-          setText("locMsg", "Location permission is required. Please allow and try again.", "bad");
+        function (err) {
+          const msg =
+            err && err.code === 1
+              ? "Permission denied. You must allow location to submit."
+              : "Could not get location. Try again (preferably outdoors) and ensure GPS is on.";
+          setText("locMsg", msg, "bad");
         },
         { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       );
@@ -133,35 +165,43 @@
 
     // ====== STEP 2: SUBMIT ======
     document.getElementById("btnSubmit").addEventListener("click", function () {
-      const email = document.getElementById("email").value.trim().toLowerCase();
-      const locId = document.getElementById("loc_id").value.trim();
+      const submitMsg = document.getElementById("submitMsg");
 
-      if (!email) { setText("submitMsg", "Please enter your email.", "bad"); return; }
-      if (!locId) { setText("submitMsg", "Please enter Location ID.", "bad"); return; }
+      const email = document.getElementById("email").value.trim().toLowerCase();
+      if (!email) { setText("submitMsg", "Enter your email first.", "bad"); return; }
+      if (!email.includes("@")) { setText("submitMsg", "Enter a valid email.", "bad"); return; }
+
       if (deviceLat === null || deviceLng === null || distanceM === null) {
         setText("submitMsg", "Please click 'Get my location' first.", "bad");
         return;
       }
 
-      // IMPORTANT: keys MUST match Apps Script doPost
+      // Safety: only allow submit if still within radius
+      const within = distanceM <= target.radius_m;
+      if (!within) {
+        setText("submitMsg", "You are outside the allowed area. Submission blocked.", "bad");
+        return;
+      }
+
       const payload = {
         email: email,
-        loc_id: locId,
+        loc_id: loc_id,
         device_lat: deviceLat,
         device_lng: deviceLng,
         distance_m: Math.round(distanceM),
-        status: status
+        status: "APPROVED"
       };
 
       setText("submitMsg", "Submitting…", "muted");
 
+      // Send as raw JSON (matches Apps Script JSON.parse(e.postData.contents))
       fetch(WEB_APP_URL, {
         method: "POST",
         body: JSON.stringify(payload)
       })
       .then(r => r.text())
-      .then(t => {
-        setText("submitMsg", `Submitted: <b>${status}</b> (${Math.round(distanceM)}m away)`, status === "APPROVED" ? "ok" : "bad");
+      .then(() => {
+        setText("submitMsg", `Submitted: <b>APPROVED</b> (${Math.round(distanceM)}m away)`, "ok");
       })
       .catch(() => {
         setText("submitMsg", "Error submitting data. Please try again.", "bad");
