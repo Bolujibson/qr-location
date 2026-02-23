@@ -27,9 +27,27 @@
   <p id="message"></p>
 
   <script>
-const targetLat = 8.4966;   // replace with your real location
-const targetLng = 4.5421;   // replace with your real location
+const targetLat = 8.457831;   
+const targetLng = 4.570773;   
 const allowedRadius = 50;   // metres
+
+    function toRad(x) {
+    return x * Math.PI / 180;
+  }
+
+  // Haversine distance (metres)
+  function distanceInMeters(lat1, lng1, lat2, lng2) {
+    const R = 6371000; // Earth radius in metres
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+      Math.sin(dLng / 2) * Math.sin(dLng / 2);
+
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
     
     // Get device location automatically
     navigator.geolocation.getCurrentPosition(
@@ -46,14 +64,26 @@ const allowedRadius = 50;   // metres
 
       e.preventDefault();
 
-      const data = {
-        email: document.getElementById("email").value,
-        loc_id: document.getElementById("loc_id").value,
-        device_lat: document.getElementById("device_lat").value,
-        device_lng: document.getElementById("device_lng").value,
-        distance_m: "",   // leave blank for now
-        status: "PENDING"
-      };
+      const deviceLat = parseFloat(document.getElementById("device_lat").value);
+const deviceLng = parseFloat(document.getElementById("device_lng").value);
+
+if (isNaN(deviceLat) || isNaN(deviceLng)) {
+  document.getElementById("message").innerText =
+    "Location not captured yet. Please allow location and try again.";
+  return;
+}
+
+const dist = distanceInMeters(deviceLat, deviceLng, targetLat, targetLng);
+const status = (dist <= allowedRadius) ? "APPROVED" : "REJECTED";
+
+const data = {
+  email: document.getElementById("email").value.trim(),
+  loc_id: document.getElementById("loc_id").value.trim(),
+  device_lat: deviceLat,
+  device_lng: deviceLng,
+  distance_m: Math.round(dist),   // whole number metres
+  status: status
+};
 
       fetch("https://script.google.com/macros/s/AKfycbx8bWi-o4xO5Zgayvcp7iRx-h7UeFoLFgCKrm9ZWnt2FXfOCjz_78WGWU3_ePCR_2LD/exec", {
         method: "POST",
@@ -61,8 +91,9 @@ const allowedRadius = 50;   // metres
       })
       .then(response => response.text())
       .then(result => {
-        document.getElementById("message").innerText = "Submitted Successfully";
-      })
+  document.getElementById("message").innerText =
+    "Submitted: " + status + " (" + Math.round(dist) + "m away)";
+})
       .catch(error => {
         document.getElementById("message").innerText = "Error submitting data";
       });
