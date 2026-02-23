@@ -1,106 +1,172 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>QR Location Check-In</title>
+  <title>Location Check-in</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; }
+    .wrap { max-width: 520px; margin: 0 auto; }
+    h2 { text-align: centre; }
+    .card { border: 1px solid #ddd; border-radius: 10px; padding: 16px; margin-top: 14px; }
+    label { font-weight: 600; }
+    input { width: 100%; padding: 10px; margin: 6px 0 12px; box-sizing: border-box; }
+    button { padding: 10px 14px; cursor: pointer; }
+    .muted { colour: #555; }
+    .ok { colour: green; font-weight: 700; }
+    .bad { colour: #b00020; font-weight: 700; }
+    .row { margin-top: 8px; }
+    a { word-break: break-all; }
+  </style>
 </head>
 
 <body>
+  <div class="wrap">
+    <h2>Location Check-in</h2>
 
-  <h2>QR Location Check-In</h2>
+    <div class="card">
+      <label>Email:</label>
+      <input type="email" id="email" placeholder="name@example.com" required>
 
-  <form id="locationForm">
+      <label>Location ID:</label>
+      <input type="text" id="loc_id" placeholder="e.g., siteA" required>
+    </div>
 
-    <label>Email:</label><br>
-    <input type="email" id="email" required><br><br>
+    <div class="card">
+      <div><b>Step 1</b> Tap Get my location and allow permission.</div>
+      <div class="row">
+        <button id="btnLocate" type="button">Get my location</button>
+      </div>
+      <div class="row" id="locMsg" class="muted"></div>
+    </div>
 
-    <label>Location ID:</label><br>
-    <input type="text" id="loc_id" required><br><br>
-
-    <input type="hidden" id="device_lat">
-    <input type="hidden" id="device_lng">
-
-    <button type="submit">Submit</button>
-
-  </form>
-
-  <p id="message"></p>
+    <div class="card">
+      <div><b>Step 2</b> If you are within the allowed area, Submit will unlock.</div>
+      <div class="row muted" id="info"></div>
+      <div class="row">
+        <button id="btnSubmit" type="button" disabled>Submit</button>
+      </div>
+      <div class="row" id="submitMsg"></div>
+    </div>
+  </div>
 
   <script>
-const targetLat = 8.457831;   
-const targetLng = 4.570773;   
-const allowedRadius = 50;   // metres
+    // ====== APPROVED (TARGET) LOCATION ======
+    const targetLat = 8.457831;
+    const targetLng = 4.570773;
+    const allowedRadius = 50; // metres
 
-    function toRad(x) {
-    return x * Math.PI / 180;
-  }
+    // ====== YOUR APPS SCRIPT WEB APP URL (/exec) ======
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbx8bWi-o4xO5Zgayvcp7iRx-h7UeFoLFgCKrm9ZWnt2FXfOCjz_78WGWU3_ePCR_2LD/exec";
 
-  // Haversine distance (metres)
-  function distanceInMeters(lat1, lng1, lat2, lng2) {
-    const R = 6371000; // Earth radius in metres
-    const dLat = toRad(lat2 - lat1);
-    const dLng = toRad(lng2 - lng1);
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-      Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    // ====== STATE ======
+    let deviceLat = null;
+    let deviceLng = null;
+    let distanceM = null;
+    let status = "PENDING";
 
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }
-    
-    // Get device location automatically
-    navigator.geolocation.getCurrentPosition(
-      function(position) {
-        document.getElementById("device_lat").value = position.coords.latitude;
-        document.getElementById("device_lng").value = position.coords.longitude;
-      },
-      function(error) {
-        alert("Location permission is required.");
+    // ====== HELPERS ======
+    function toRad(x) { return x * Math.PI / 180; }
+
+    function distanceInMeters(lat1, lng1, lat2, lng2) {
+      const R = 6371000;
+      const dLat = toRad(lat2 - lat1);
+      const dLng = toRad(lng2 - lng1);
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+        Math.sin(dLng / 2) * Math.sin(dLng / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
+
+    function mapLink(lat, lng) {
+      return "https://www.google.com/maps?q=" + encodeURIComponent(lat + "," + lng);
+    }
+
+    function setText(id, text, cssClass) {
+      const el = document.getElementById(id);
+      el.className = cssClass || "";
+      el.innerHTML = text;
+    }
+
+    // ====== STEP 1: GET LOCATION ======
+    document.getElementById("btnLocate").addEventListener("click", function () {
+      setText("locMsg", "Getting your location…", "muted");
+
+      if (!navigator.geolocation) {
+        setText("locMsg", "Your browser does not support location.", "bad");
+        return;
       }
-    );
 
-    document.getElementById("locationForm").addEventListener("submit", function(e) {
+      navigator.geolocation.getCurrentPosition(
+        function (pos) {
+          deviceLat = pos.coords.latitude;
+          deviceLng = pos.coords.longitude;
 
-      e.preventDefault();
+          distanceM = distanceInMeters(deviceLat, deviceLng, targetLat, targetLng);
+          const rounded = Math.round(distanceM);
 
-      const deviceLat = parseFloat(document.getElementById("device_lat").value);
-const deviceLng = parseFloat(document.getElementById("device_lng").value);
+          const within = distanceM <= allowedRadius;
+          status = within ? "APPROVED" : "REJECTED";
 
-if (isNaN(deviceLat) || isNaN(deviceLng)) {
-  document.getElementById("message").innerText =
-    "Location not captured yet. Please allow location and try again.";
-  return;
-}
+          const msg = within
+            ? `You are within the allowed area. (allowed ${allowedRadius} m)`
+            : `You are outside the allowed area. Move closer (allowed ${allowedRadius} m).`;
 
-const dist = distanceInMeters(deviceLat, deviceLng, targetLat, targetLng);
-const status = (dist <= allowedRadius) ? "APPROVED" : "REJECTED";
+          setText("locMsg", msg, within ? "ok" : "bad");
 
-const data = {
-  email: document.getElementById("email").value.trim(),
-  loc_id: document.getElementById("loc_id").value.trim(),
-  device_lat: deviceLat,
-  device_lng: deviceLng,
-  distance_m: Math.round(dist),   // whole number metres
-  status: status
-};
+          const infoHtml =
+            `Location ID: <b>${document.getElementById("loc_id").value || "(enter location ID)"}</b><br>` +
+            `Distance: <b>${rounded} m</b><br>` +
+            `Map: <a href="${mapLink(deviceLat, deviceLng)}" target="_blank" rel="noopener">Open map</a>`;
 
-      fetch("https://script.google.com/macros/s/AKfycbx8bWi-o4xO5Zgayvcp7iRx-h7UeFoLFgCKrm9ZWnt2FXfOCjz_78WGWU3_ePCR_2LD/exec", {
-        method: "POST",
-        body: JSON.stringify(data)
-      })
-      .then(response => response.text())
-      .then(result => {
-  document.getElementById("message").innerText =
-    "Submitted: " + status + " (" + Math.round(dist) + "m away)";
-})
-      .catch(error => {
-        document.getElementById("message").innerText = "Error submitting data";
-      });
+          setText("info", infoHtml, "muted");
 
+          document.getElementById("btnSubmit").disabled = !within;
+        },
+        function () {
+          setText("locMsg", "Location permission is required. Please allow and try again.", "bad");
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
     });
 
-  </script>
+    // ====== STEP 2: SUBMIT ======
+    document.getElementById("btnSubmit").addEventListener("click", function () {
+      const email = document.getElementById("email").value.trim().toLowerCase();
+      const locId = document.getElementById("loc_id").value.trim();
 
+      if (!email) { setText("submitMsg", "Please enter your email.", "bad"); return; }
+      if (!locId) { setText("submitMsg", "Please enter Location ID.", "bad"); return; }
+      if (deviceLat === null || deviceLng === null || distanceM === null) {
+        setText("submitMsg", "Please click 'Get my location' first.", "bad");
+        return;
+      }
+
+      // IMPORTANT: keys MUST match Apps Script doPost
+      const payload = {
+        email: email,
+        loc_id: locId,
+        device_lat: deviceLat,
+        device_lng: deviceLng,
+        distance_m: Math.round(distanceM),
+        status: status
+      };
+
+      setText("submitMsg", "Submitting…", "muted");
+
+      fetch(WEB_APP_URL, {
+        method: "POST",
+        body: JSON.stringify(payload)
+      })
+      .then(r => r.text())
+      .then(t => {
+        setText("submitMsg", `Submitted: <b>${status}</b> (${Math.round(distanceM)}m away)`, status === "APPROVED" ? "ok" : "bad");
+      })
+      .catch(() => {
+        setText("submitMsg", "Error submitting data. Please try again.", "bad");
+      });
+    });
+  </script>
 </body>
 </html>
