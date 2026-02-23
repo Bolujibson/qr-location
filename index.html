@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QR Location Check-In</title>
+</head>
+
+<body>
+
+  <h2>QR Location Check-In</h2>
+
+  <form id="locationForm">
+
+    <label>Email:</label><br>
+    <input type="email" id="email" required><br><br>
+
+    <label>Location ID:</label><br>
+    <input type="text" id="loc_id" required><br><br>
+
+    <input type="hidden" id="device_lat">
+    <input type="hidden" id="device_lng">
+
+    <button type="submit">Submit</button>
+
+  </form>
+
+  <p id="message"></p>
+
+  <script>
+
+    // Get device location automatically
+    navigator.geolocation.getCurrentPosition(
+      function(position) {
+        document.getElementById("device_lat").value = position.coords.latitude;
+        document.getElementById("device_lng").value = position.coords.longitude;
+      },
+      function(error) {
+        alert("Location permission is required.");
+      }
+    );
+
+    document.getElementById("locationForm").addEventListener("submit", function(e) {
+
+      e.preventDefault();
+
+      const data = {
+        email: document.getElementById("email").value,
+        loc_id: document.getElementById("loc_id").value,
+        device_lat: document.getElementById("device_lat").value,
+        device_lng: document.getElementById("device_lng").value,
+        distance_m: "",   // leave blank for now
+        status: "PENDING"
+      };
+
+      fetch("https://script.google.com/macros/s/AKfycbx8bWi-o4xO5Zgayvcp7iRx-h7UeFoLFgCKrm9ZWnt2FXfOCjz_78WGWU3_ePCR_2LD/exec", {
+        method: "POST",
+        body: JSON.stringify(data)
+      })
+      .then(response => response.text())
+      .then(result => {
+        document.getElementById("message").innerText = "Submitted Successfully";
+      })
+      .catch(error => {
+        document.getElementById("message").innerText = "Error submitting data";
+      });
+
+    });
+
+  </script>
+
+</body>
+</html>
